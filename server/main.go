@@ -15,6 +15,7 @@ func main() {
 	}
 
 	url := os.Getenv("DB_URL")
+	
 
 	test := api.CreateServer(":4000", url)
 	test.StartServer()
