@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"os"
-
 	"github.com/joho/godotenv"
 	"macromaster.com/packages/api"
 )
@@ -15,7 +14,7 @@ func main() {
 	}
 
 	url := os.Getenv("DB_URL")
-	
+
 
 	test := api.CreateServer(":4000", url)
 	test.StartServer()

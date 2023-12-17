@@ -7,6 +7,7 @@ import RegisterButton from "../components/RegisterButton";
 
 const Signup = ({navigation}) => {
     const [hidden, setHidden] = useState(true)
+    const [samePassword, setSamePassword] = useState(false)
 
     return (
         <View style={styles.container}>
@@ -19,7 +20,7 @@ const Signup = ({navigation}) => {
                 
                 <Formik initialValues={{ name: '', email: '', username: '', password: '' }} 
                 onSubmit={(values, actions) => {
-                    fetch("/////////", {
+                    fetch("http://localhost:4000/signup", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json"  
@@ -63,12 +64,6 @@ const Signup = ({navigation}) => {
                                 placeholderTextColor="#5D5D5D"
                                 onChangeText={props.handleChange('password')}
                                 value={props.values.password}
-                                secureTextEntry={hidden}/>
-                            <Text style={styles.text}>Re-enter Password</Text>
-                            <TextInput 
-                                style={styles.input}
-                                placeholder="Re-enter Password"
-                                placeholderTextColor="#5D5D5D" 
                                 secureTextEntry={hidden}/>
                             <RegisterButton text="Sign Up" press={props.handleSubmit}/>
 

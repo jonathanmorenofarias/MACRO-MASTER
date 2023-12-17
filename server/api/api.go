@@ -1,14 +1,14 @@
 package api
 
 import (
-	_ "github.com/lib/pq"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"github.com/gorilla/mux"
 	"github.com/gorilla/handlers"
-	"encoding/json"
+	"github.com/gorilla/mux"
+	"github.com/lib/pq"
 )
 
 
@@ -38,11 +38,11 @@ func (api Server) StartDB () *sql.DB {
 		log.Fatal(err)
 	}
 
-	query := `CREATE TABLE IF NOT EXISTS "user" (
+	query := `CREATE TABLE IF NOT EXISTS "Users" (
 		id SERIAL PRIMARY KEY,
 		name VARCHAR(100) NOT NULL,
-		email VARCHAR(100) NOT NULL,
-		username VARCHAR(100) NOT NULL,
+		email VARCHAR(100) NOT NULL UNIQUE,
+		username VARCHAR(100) NOT NULL UNIQUE,
 		password VARCHAR(100) NOT NULL,
 		created timestamptz DEFAULT CURRENT_TIMESTAMP
 	)`
@@ -67,31 +67,99 @@ func (api Server) StartServer(){
 	defer api.DB.Close()
 
 	router.HandleFunc("/signup", printMethod(api.handleRegister))
+	router.HandleFunc("/login", printMethod(api.handleLogin))
 
 	http.ListenAndServe(api.Port, handlers.CORS(
 		handlers.AllowedOrigins([]string{"*"}),
 		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
 		handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
 	)(router))
-
 }
 
 func (api Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
+		w.Header().Set("Content-Type", "text/plain")
+
 		var person User
 
-		json.NewDecoder(r.Body).Decode(&person)
+		err := json.NewDecoder(r.Body).Decode(&person)
+		if err != nil {
+			http.Error(w, "Could not parse JSON", http.StatusBadRequest)
+			return
+		}
 
-		query := `INSERT INTO "user" (name, email, username, password)
+		if person.Name == "" {
+			http.Error(w, "Missing name", http.StatusBadRequest)
+			return
+		} else if person.Email == "" {
+			http.Error(w, "Missing email", http.StatusBadRequest)
+			return
+		} else if person.Username == "" {
+			http.Error(w, "Missing username", http.StatusBadRequest)
+			return
+		} else if person.Password == "" {
+			http.Error(w, "Missing password", http.StatusBadRequest)
+			return
+		}
+
+		hashedPassowrd := HashPassword(person.Password)
+
+		query := `INSERT INTO "Users" (name, email, username, password)
 			VALUES ($1, $2, $3, $4) RETURNING id`
 
 		var key int
-		err := api.DB.QueryRow(query, person.Name, person.Email, person.Username, person.Password).Scan(&key)
+		err = api.DB.QueryRow(query, person.Name, person.Email, person.Username, string(hashedPassowrd)).Scan(&key)
 
 		if err != nil {
-			log.Fatal()
+			pgErr, ok := err.(*pq.Error)
+			if ok {
+				if pgErr.Code == "23505" {
+					http.Error(w, "This username or email already exists!", http.StatusBadRequest)
+					return
+				}
+			}
 		}
 
 		fmt.Fprintf(w, "Account for id: %d created successfully.", key)
+	}
+}
+
+func (api Server) handleLogin(w http.ResponseWriter, r *http.Request){
+	if r.Method == "POST" {
+		w.Header().Set("Content-Type", "text/plain")
+
+		var person User
+
+		err := json.NewDecoder(r.Body).Decode(&person)
+		if err != nil {
+			http.Error(w, "Could not parse JSON", http.StatusBadRequest)
+			return
+		}
+
+		if person.Username == "" {
+			http.Error(w, "Missing username", http.StatusBadRequest)
+			return
+		} else if person.Password == "" {
+			http.Error(w, "Missing password", http.StatusBadRequest)
+			return
+		}
+
+		query := `SELECT password FROM "Users"
+			WHERE username = $1`
+
+		var password string
+		err = api.DB.QueryRow(query, person.Username).Scan(&password)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		match := DecryptPassword(person.Password, password)
+		if match {
+			fmt.Println("it is a match")
+		} else {
+			fmt.Println("not a match")
+		}
+
 	}
 }
