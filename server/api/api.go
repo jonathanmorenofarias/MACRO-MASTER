@@ -120,18 +120,20 @@ func (api Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		fmt.Fprintf(w, "Account for id: %d created successfully.", key)
+		createdUser := fmt.Sprintf(`{"id": "%d",  "name": "%s", "username": "%s" }`, key, person.Name, person.Username)
+		w.Write([]byte(createdUser))
 	}
 }
 
 func (api Server) handleLogin(w http.ResponseWriter, r *http.Request){
 	if r.Method == "POST" {
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "application/json")
 
 		var person User
 
 		err := json.NewDecoder(r.Body).Decode(&person)
 		if err != nil {
+			
 			http.Error(w, "Could not parse JSON", http.StatusBadRequest)
 			return
 		}
@@ -151,15 +153,23 @@ func (api Server) handleLogin(w http.ResponseWriter, r *http.Request){
 		err = api.DB.QueryRow(query, person.Username).Scan(&password)
 
 		if err != nil {
-			log.Fatal(err)
+			if err == sql.ErrNoRows{
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("This username does not exist"))
+			}
+			return
 		}
 
 		match := DecryptPassword(person.Password, password)
-		if match {
-			fmt.Println("it is a match")
+		if !match {
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte("Incorrect passowrd"))
 		} else {
-			fmt.Println("not a match")
+			token := CreateToken(2)
+			fmt.Println(token)
 		}
+		
+
 
 	}
 }
