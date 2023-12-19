@@ -1,41 +1,43 @@
-import { View, Text, Image, TextInput, StatusBar, StyleSheet, Linking } from "react-native";
+import { View, Text, Image, TextInput, StatusBar, StyleSheet, Keyboard, TouchableWithoutFeedback } from "react-native";
 import { Button } from "react-native";
 import { useState } from "react";
 
 import RegisterButton from "../components/RegisterButton";
 
-const nosign = ({navigation}) => {
+const Login = ({navigation}) => {
     const [hidden, setHidden] = useState(true)
 
     return (
-        <View style={styles.container}>
-            <Image 
-                source={require("../assets/Macro.png")} 
-                style={styles.logo}
-                />
-            <View style={styles.backgroundform}>
-                <Text style={styles.signupmessage}>Sign In To Start Tracking</Text>
-                <View style={styles.signup}>
-                    <Text style={styles.text}>Username</Text>
-                    <TextInput 
-                        style={styles.input}
-                        placeholder="Enter Username"
-                        placeholderTextColor="#5D5D5D"
-                        />
-                    <Text style={styles.text}>Password</Text>
-                    <TextInput 
-                        style={styles.input}
-                        placeholder="Enter Password" 
-                        placeholderTextColor="#5D5D5D"
-                        secureTextEntry={hidden}/>
-                    <RegisterButton text="Log In"/>
-                    <View style={styles.signedup}>
-                        <Text style={styles.nosign}>Don't have an account?</Text>
-                        <Button title="Sign Up" onPress={() => navigation.navigate("Signup")}/>
+        <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+            <View style={styles.container}>
+                <Image 
+                    source={require("../assets/Macro.png")} 
+                    style={styles.logo}
+                    />
+                <View style={styles.backgroundform}>
+                    <Text style={styles.signupmessage}>Sign In To Start Tracking</Text>
+                    <View style={styles.signup}>
+                        <Text style={styles.text}>Username</Text>
+                        <TextInput 
+                            style={styles.input}
+                            placeholder="Enter Username"
+                            placeholderTextColor="#5D5D5D"
+                            />
+                        <Text style={styles.text}>Password</Text>
+                        <TextInput 
+                            style={styles.input}
+                            placeholder="Enter Password" 
+                            placeholderTextColor="#5D5D5D"
+                            secureTextEntry={hidden}/>
+                        <RegisterButton text="Log In"/>
+                        <View style={styles.signedup}>
+                            <Text style={styles.nosign}>Don't have an account?</Text>
+                            <Button title="Sign Up" onPress={() => navigation.navigate("Signup")}/>
+                        </View>
                     </View>
                 </View>
             </View>
-        </View>
+        </TouchableWithoutFeedback>
     )
 
 }
@@ -103,4 +105,4 @@ const styles = StyleSheet.create({
 })
 
 
-export default nosign;
+export default Login;
