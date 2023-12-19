@@ -8,16 +8,8 @@ import (
 	"net/http"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/lib/pq"
+	_"github.com/lib/pq"
 )
-
-
-func printMethod(handler http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("%s %s\n", r.Method, r.URL)
-		handler.ServeHTTP(w, r)
-	}
-}
 
 func CreateServer(port string, url string) *Server {
 	return (
@@ -25,6 +17,27 @@ func CreateServer(port string, url string) *Server {
 			Port: port,
 			DB_URL: url,
 	})
+}
+
+func (api Server) StartServer(){
+	router := mux.NewRouter()
+
+	fmt.Printf("Server is listening on port: %s\n", api.Port)
+
+	api.DB = api.StartDB()
+	defer api.DB.Close()
+
+	router.HandleFunc("/signup", printMethod(api.handleRegister))
+	router.HandleFunc("/login", printMethod(api.handleLogin))
+	router.HandleFunc("/test", AuthenticateUser(func (w http.ResponseWriter, r *http.Request){
+		fmt.Fprintln(w, "Im done")
+	}))
+
+	http.ListenAndServe(api.Port, handlers.CORS(
+		handlers.AllowedOrigins([]string{"*"}),
+		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+		handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
+	)(router))
 }
 
 func (api Server) StartDB () *sql.DB {
@@ -58,47 +71,24 @@ func (api Server) StartDB () *sql.DB {
 	return db
 }
 
-func (api Server) StartServer(){
-	router := mux.NewRouter()
-
-	fmt.Printf("Server is listening on port: %s\n", api.Port)
-
-	api.DB = api.StartDB()
-	defer api.DB.Close()
-
-	router.HandleFunc("/signup", printMethod(api.handleRegister))
-	router.HandleFunc("/login", printMethod(api.handleLogin))
-
-	http.ListenAndServe(api.Port, handlers.CORS(
-		handlers.AllowedOrigins([]string{"*"}),
-		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
-		handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
-	)(router))
+func (api Server) RespondStatus(w http.ResponseWriter, status int, message any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(message)
 }
 
 func (api Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
-		w.Header().Set("Content-Type", "text/plain")
-
 		var person User
 
 		err := json.NewDecoder(r.Body).Decode(&person)
 		if err != nil {
-			http.Error(w, "Could not parse JSON", http.StatusBadRequest)
+			api.RespondStatus(w, 400, ReqError{Error: "Access Denied"})
 			return
 		}
 
-		if person.Name == "" {
-			http.Error(w, "Missing name", http.StatusBadRequest)
-			return
-		} else if person.Email == "" {
-			http.Error(w, "Missing email", http.StatusBadRequest)
-			return
-		} else if person.Username == "" {
-			http.Error(w, "Missing username", http.StatusBadRequest)
-			return
-		} else if person.Password == "" {
-			http.Error(w, "Missing password", http.StatusBadRequest)
+		if person.Name == "" || person.Email == "" || person.Username == "" || person.Password == "" {
+			api.RespondStatus(w, 400, ReqError{Error: "Access Denied"})
 			return
 		}
 
@@ -107,69 +97,59 @@ func (api Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		query := `INSERT INTO "Users" (name, email, username, password)
 			VALUES ($1, $2, $3, $4) RETURNING id`
 
-		var key int
-		err = api.DB.QueryRow(query, person.Name, person.Email, person.Username, string(hashedPassowrd)).Scan(&key)
+		var id int
+		err = api.DB.QueryRow(query, person.Name, person.Email, person.Username, string(hashedPassowrd)).Scan(&id)
 
 		if err != nil {
-			pgErr, ok := err.(*pq.Error)
-			if ok {
-				if pgErr.Code == "23505" {
-					http.Error(w, "This username or email already exists!", http.StatusBadRequest)
-					return
-				}
-			}
+			api.RespondStatus(w, 409, ReqError{Error: "Username or Password already exists"})
 		}
 
-		createdUser := fmt.Sprintf(`{"id": "%d",  "name": "%s", "username": "%s" }`, key, person.Name, person.Username)
-		w.Write([]byte(createdUser))
+		createdUser := fmt.Sprintf(`{"id": "%d",  "name": "%s", "username": "%s" }`, id, person.Name, person.Username)
+		api.RespondStatus(w, 200, ReqSuccess{Success: createdUser})
 	}
 }
 
 func (api Server) handleLogin(w http.ResponseWriter, r *http.Request){
 	if r.Method == "POST" {
-		w.Header().Set("Content-Type", "application/json")
-
 		var person User
-
 		err := json.NewDecoder(r.Body).Decode(&person)
+
 		if err != nil {
-			
-			http.Error(w, "Could not parse JSON", http.StatusBadRequest)
+			api.RespondStatus(w, 400, ReqError{Error: "Access Denied"})
 			return
 		}
 
 		if person.Username == "" {
-			http.Error(w, "Missing username", http.StatusBadRequest)
+			api.RespondStatus(w, 400, ReqError{Error: "Access Denied"})
 			return
 		} else if person.Password == "" {
-			http.Error(w, "Missing password", http.StatusBadRequest)
+			api.RespondStatus(w, 400, ReqError{Error: "Access Denied"})
 			return
 		}
 
-		query := `SELECT password FROM "Users"
-			WHERE username = $1`
+		query := `SELECT id, password 
+				FROM "Users"
+				WHERE username = $1`
 
-		var password string
-		err = api.DB.QueryRow(query, person.Username).Scan(&password)
-
-		if err != nil {
-			if err == sql.ErrNoRows{
-				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte("This username does not exist"))
-			}
-			return
-		}
-
-		match := DecryptPassword(person.Password, password)
-		if !match {
-			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte("Incorrect passowrd"))
-		} else {
-			token := CreateToken(2)
-			fmt.Println(token)
-		}
+		var verifyPerson UserAuth
+		err = api.DB.QueryRow(query, person.Username).Scan(&verifyPerson.Id, &verifyPerson.Password)
 		
+		if err != nil {
+			api.RespondStatus(w, 404, ReqError{Error: "Access Denied"})
+			return
+		}
 
+		match := DecryptPassword(person.Password, verifyPerson.Password)
 
+		if !match {
+			api.RespondStatus(w, 401, ReqError{Error: "Access Denied"})
+		} else {
+			token, err := CreateToken(verifyPerson.Id)
+			if err != nil {
+				api.RespondStatus(w, 500, ReqError{Error: "Server Error"})
+				return
+			}
+			api.RespondStatus(w, 200, token)
+		}
 	}
 }
